@@ -4,6 +4,8 @@ agent any
 environment {
     GREEN_IP = "172.31.20.55"
     SSH_CREDENTIALS = "ssh-key"
+    REPO_URL = "https://github.com/Ajinkya1210/blue-green-deployment.git" 
+    BRANCH_NAME = "master"
     BLUE_TG_ARN = "arn:aws:elasticloadbalancing:us-east-1:779679300187:targetgroup/Blue-TG/7a05ae46b26469b3"
     GREEN_TG_ARN = "arn:aws:elasticloadbalancing:us-east-1:779679300187:targetgroup/Green-TG/457a1604ecc026f5"
     REMOTE_USER = "ubuntu"
@@ -11,7 +13,11 @@ environment {
     KEY_FILE = "free-v-key.pem"
     REMOTE_PATH = "/usr/share/nginx/html/index.html"
 }
-
+stage {'clone the repository' } {
+    steps {
+        git branch: "${BRANCH_NAME}", url: "${REPO_URL}"
+    }
+}
 stage('Deploy to Green') {
     steps {
         sh '''
