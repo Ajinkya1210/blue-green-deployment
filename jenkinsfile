@@ -1,87 +1,86 @@
 pipeline {
-agent any
+    agent any
 
-environment {
-    GREEN_IP = "172.31.20.55"
-    SSH_CREDENTIALS = "ssh-key"
-    REPO_URL = "https://github.com/Ajinkya1210/blue-green-deployment.git" 
-    BRANCH_NAME = "master"
-    BLUE_TG_ARN = "arn:aws:elasticloadbalancing:us-east-1:779679300187:targetgroup/Blue-TG/7a05ae46b26469b3"
-    GREEN_TG_ARN = "arn:aws:elasticloadbalancing:us-east-1:779679300187:targetgroup/Green-TG/457a1604ecc026f5"
-    REMOTE_USER = "ubuntu"
-    LISTENER_ARN = "arn:aws:elasticloadbalancing:us-east-1:779679300187:listener/app/Blue-Green-alb/abf3a3eacb4cdad1/990057949eb8c22d"
-    KEY_FILE = "free-v-key.pem"
-    REMOTE_PATH = "/usr/share/nginx/html/index.html"
-}
-stage {'clone the repository' } {
-    steps {
-        git branch: "${BRANCH_NAME}", url: "${REPO_URL}"
+    environment {
+        GREEN_IP = "172.31.20.55"
+        REPO_URL = "https://github.com/Ajinkya1210/blue-green-deployment.git"
+        BRANCH_NAME = "master"
+        BLUE_TG_ARN = "arn:aws:elasticloadbalancing:us-east-1:779679300187:targetgroup/Blue-TG/7a05ae46b26469b3"
+        GREEN_TG_ARN = "arn:aws:elasticloadbalancing:us-east-1:779679300187:targetgroup/Green-TG/457a1604ecc026f5"
+        REMOTE_USER = "ubuntu"
+        LISTENER_ARN = "arn:aws:elasticloadbalancing:us-east-1:779679300187:listener/app/Blue-Green-alb/abf3a3eacb4cdad1/990057949eb8c22d"
+        KEY_FILE = "free-v-key.pem"
     }
-}
-stage('Deploy to Green') {
-    steps {
-        sh '''
-        echo "Deploying to Green server..."
 
-        scp -i /var/lib/jenkins/$KEY_FILE -o StrictHostKeyChecking=no index.html $REMOTE_USER@$GREEN_IP:/tmp/
+    stages {
 
-        ssh -i /var/lib/jenkins/$KEY_FILE -o StrictHostKeyChecking=no $REMOTE_USER@$GREEN_IP "
-        sudo mv /tmp/index.html /var/www/html/index.html
-        sudo systemctl restart nginx
-        "
-        '''
-    }
-}
+        stage('Clone Repository') {
+            steps {
+                git branch: "${BRANCH_NAME}", url: "${REPO_URL}"
+            }
+        }
 
-    stage('Health Check') {
-        steps {
-            sh '''
-            echo "Checking Green health..."
+        stage('Deploy to Green') {
+            steps {
+                sh '''
+                echo "Deploying to Green server..."
 
-            curl -f http://$GREEN_IP || exit 1
-            '''
+                scp -i /var/lib/jenkins/$KEY_FILE -o StrictHostKeyChecking=no index.html $REMOTE_USER@$GREEN_IP:/tmp/
+
+                ssh -i /var/lib/jenkins/$KEY_FILE -o StrictHostKeyChecking=no $REMOTE_USER@$GREEN_IP "
+                sudo mv /tmp/index.html /var/www/html/index.html
+                sudo systemctl restart nginx
+                "
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                sh '''
+                echo "Checking Green health..."
+                curl -f http://$GREEN_IP || exit 1
+                '''
+            }
+        }
+
+        stage('Switch Traffic to Green') {
+            steps {
+                sh '''
+                echo "Switching traffic to Green..."
+
+                aws elbv2 modify-listener \
+                --listener-arn $LISTENER_ARN \
+                --default-actions Type=forward,TargetGroupArn=$GREEN_TG_ARN
+                '''
+            }
+        }
+
+        stage('Post Switch Validation') {
+            steps {
+                sh '''
+                echo "Validating after switch..."
+
+                sleep 10
+                curl -f http://$GREEN_IP || exit 1
+                '''
+            }
         }
     }
 
-    stage('Switch Traffic to Green') {
-        steps {
-            sh '''
-            echo "Switching traffic to Green..."
+    post {
+        success {
+            echo "Deployment successful! 🎉"
+        }
 
+        failure {
+            echo "Deployment failed! Rolling back to Blue..."
+
+            sh '''
             aws elbv2 modify-listener \
             --listener-arn $LISTENER_ARN \
-            --default-actions Type=forward,TargetGroupArn=$GREEN_TG_ARN
-            '''
-        }
-    }
-
-    stage('Post Switch Validation') {
-        steps {
-            sh '''
-            echo "Validating after switch..."
-
-            sleep 10
-            curl -f http://$GREEN_IP || exit 1
+            --default-actions Type=forward,TargetGroupArn=$BLUE_TG_ARN
             '''
         }
     }
 }
-
-post {
-
-    success {
-        echo "Deployment successful! 🎉"
-    }
-
-    failure {
-        echo "Deployment failed! Rolling back to Blue..."
-
-        sh '''
-        aws elbv2 modify-listener \
-        --listener-arn $LISTENER_ARN \
-        --default-actions Type=forward,TargetGroupArn=$BLUE_TG_ARN
-        '''
-    }
-}
-
-
