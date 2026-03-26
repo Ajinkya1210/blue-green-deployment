@@ -21,19 +21,15 @@ pipeline {
         }
 
         stage('Deploy to Green') {
-            steps {
-                sh '''
-                echo "Deploying to Green server..."
-
-                scp -i /var/lib/jenkins/$KEY_FILE -o StrictHostKeyChecking=no index.html $REMOTE_USER@$GREEN_IP:/tmp/
-
-                ssh -i /var/lib/jenkins/$KEY_FILE -o StrictHostKeyChecking=no $REMOTE_USER@$GREEN_IP "
-                sudo mv /tmp/index.html /var/www/html/index.html
-                sudo systemctl restart nginx
-                "
-                '''
-            }
-        }
+    steps {
+        sh '''
+        ssh -i /var/lib/jenkins/$KEY_FILE -o StrictHostKeyChecking=no $REMOTE_USER@$GREEN_IP "
+        echo 'Version 2 - Updated by Jenkins' | sudo tee /var/www/html/index.html
+        sudo systemctl restart nginx
+        "
+        '''
+    }
+}
 
         stage('Health Check') {
             steps {
