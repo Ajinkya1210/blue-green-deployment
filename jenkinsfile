@@ -19,15 +19,14 @@ pipeline {
                 git branch: "${BRANCH_NAME}", url: "${REPO_URL}"
             }
         }
-
         stage('Deploy to Green') {
     steps {
         sh '''
-ssh -i /var/lib/jenkins/$KEY_FILE -o StrictHostKeyChecking=no $REMOTE_USER@$GREEN_IP "
-echo 'Version 2 - Updated by Jenkins' | sudo tee /var/www/html/index.html
-sudo systemctl restart nginx
-"
-'''
+        ssh -i /var/lib/jenkins/$KEY_FILE -o StrictHostKeyChecking=no $REMOTE_USER@$GREEN_IP "
+        echo 'Version 2 - Updated by Jenkins' | sudo tee /var/www/html/index.html
+        sudo systemctl restart nginx
+        "
+        '''
     }
 }
 
